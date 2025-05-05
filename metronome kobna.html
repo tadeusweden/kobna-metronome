@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kobna Metronome</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .beat-indicator {
+            transition: all 0.1s ease;
+        }
+        .active-beat {
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.7);
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        .pulse-animation {
+            animation: pulse 0.5s infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col">
+    <div class="container mx-auto px-4 py-8 flex-1">
+        <h1 class="text-4xl font-bold text-center mb-8 text-sky-400">Kobna Metronome</h1>
+        
+        <div class="max-w-md mx-auto bg-slate-800 rounded-xl shadow-xl p-6">
+            <!-- Controls Section -->
+            <div class="grid grid-cols-1 gap-6 mb-8">
+                <!-- Tempo Control -->
+                <div class="bg-slate-700 p-4 rounded-lg">
+                    <h2 class="text-xl font-semibold mb-4 text-center">Tempo</h2>
+                    <div class="flex items-center justify-center space-x-4">
+                        <button id="tempo-down" class="bg-slate-600 hover:bg-slate-500 rounded-full w-10 h-10 flex items-center justify-center">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                        <div class="text-center">
+                            <div id="tempo-value" class="text-3xl font-bold">120</div>
+                            <div class="text-sm text-slate-300">BPM</div>
+                        </div>
+                        <button id="tempo-up" class="bg-slate-600 hover:bg-slate-500 rounded-full w-10 h-10 flex items-center justify-center">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                    <input id="tempo-slider" type="range" min="40" max="240" value="120" class="w-full mt-4 accent-sky-500">
+                </div>
+                
+                <!-- Time Signature -->
+                <div class="bg-slate-700 p-4 rounded-lg">
+                    <h2 class="text-xl font-semibold mb-4 text-center">Time Signature</h2>
+                    <div class="flex justify-center space-x-4">
+                        <div class="flex flex-col items-center">
+                            <div class="text-sm mb-1">Beats</div>
+                            <select id="time-signature-top" class="bg-slate-600 rounded px-3 py-2 w-16 text-center">
+                                <option>2</option>
+                                <option>3</option>
+                                <option selected>4</option>
+                                <option>5</option>
+                                <option>6</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center text-2xl">/</div>
+                        <div class="flex flex-col items-center">
+                            <div class="text-sm mb-1">Note Value</div>
+                            <select id="time-signature-bottom" class="bg-slate-600 rounded px-3 py-2 w-16 text-center">
+                                <option>2</option>
+                                <option selected>4</option>
+                                <option>8</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Transport Controls -->
+                <div class="bg-slate-700 p-4 rounded-lg">
+                    <h2 class="text-xl font-semibold mb-4 text-center">Controls</h2>
+                    <div class="flex justify-center space-x-4">
+                        <button id="play-button" class="bg-green-600 hover:bg-green-500 rounded-full w-14 h-14 flex items-center justify-center">
+                            <i class="fas fa-play text-xl"></i>
+                        </button>
+                        <button id="stop-button" class="bg-red-600 hover:bg-red-500 rounded-full w-14 h-14 flex items-center justify-center">
+                            <i class="fas fa-stop text-xl"></i>
+                        </button>
+                    </div>
+                    <div class="mt-4 flex justify-center">
+                        <div class="flex items-center space-x-2">
+                            <span>Volume:</span>
+                            <input id="volume-slider" type="range" min="0" max="100" value="70" class="w-24 accent-sky-500">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Visual Indicators -->
+            <div class="bg-slate-700 p-4 rounded-lg">
+                <h2 class="text-xl font-semibold mb-4 text-center">Beat Indicator</h2>
+                <div class="flex justify-center">
+                    <div id="beat-indicators" class="flex space-x-4">
+                        <!-- Beat indicators will be dynamically generated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer class="bg-slate-800 py-4 text-center text-slate-400">
+        <p>Kobna Metronome - Simple and Effective</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Audio Context Setup
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            let isPlaying = false;
+            let currentBeat = 0;
+            let intervalId = null;
+            let tempo = 120;
+            let timeSignatureTop = 4;
+            let timeSignatureBottom = 4;
+            let volume = 0.7;
+            
+            // Sound buffers
+            let downbeatSound, beatSound;
+            
+            // Initialize sounds
+            function initSounds() {
+                // Create oscillator for downbeat (low pitch)
+                const downbeatOsc = audioContext.createOscillator();
+                const downbeatGain = audioContext.createGain();
+                downbeatOsc.type = 'sine';
+                downbeatOsc.frequency.value = 440;
+                downbeatGain.gain.value = 0;
+                
+                downbeatOsc.connect(downbeatGain);
+                downbeatGain.connect(audioContext.destination);
+                downbeatOsc.start();
+                
+                // Create oscillator for beat (medium pitch)
+                const beatOsc = audioContext.createOscillator();
+                const beatGain = audioContext.createGain();
+                beatOsc.type = 'sine';
+                beatOsc.frequency.value = 880;
+                beatGain.gain.value = 0;
+                
+                beatOsc.connect(beatGain);
+                beatGain.connect(audioContext.destination);
+                beatOsc.start();
+                
+                return {
+                    downbeat: { osc: downbeatOsc, gain: downbeatGain },
+                    beat: { osc: beatOsc, gain: beatGain }
+                };
+            }
+            
+            const sounds = initSounds();
+            
+            // Play a sound
+            function playSound(type) {
+                const now = audioContext.currentTime;
+                const sound = sounds[type];
+                
+                // Create a quick envelope for the sound
+                sound.gain.gain.cancelScheduledValues(now);
+                sound.gain.gain.setValueAtTime(0, now);
+                sound.gain.gain.linearRampToValueAtTime(volume, now + 0.01);
+                sound.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            }
+            
+            // Update the metronome based on current settings
+            function updateMetronome() {
+                if (isPlaying) {
+                    stopMetronome();
+                    startMetronome();
+                }
+            }
+            
+            // Start the metronome
+            function startMetronome() {
+                isPlaying = true;
+                document.getElementById('play-button').innerHTML = '<i class="fas fa-pause"></i>';
+                document.getElementById('play-button').classList.remove('bg-green-600', 'hover:bg-green-500');
+                document.getElementById('play-button').classList.add('bg-yellow-600', 'hover:bg-yellow-500');
+                
+                const beatLength = 60000 / tempo; // in ms
+                let lastTickTime = performance.now();
+                
+                function tick() {
+                    const now = performance.now();
+                    const elapsed = now - lastTickTime;
+                    
+                    if (elapsed >= beatLength) {
+                        lastTickTime = now;
+                        
+                        // Play appropriate sound
+                        if (currentBeat === 0) {
+                            playSound('downbeat');
+                        } else {
+                            playSound('beat');
+                        }
+                        
+                        // Update visual indicators
+                        updateVisualIndicators(currentBeat);
+                        
+                        // Move to next beat
+                        currentBeat = (currentBeat + 1) % timeSignatureTop;
+                    }
+                    
+                    if (isPlaying) {
+                        requestAnimationFrame(tick);
+                    }
+                }
+                
+                // Start the first tick
+                requestAnimationFrame(tick);
+            }
+            
+            // Stop the metronome
+            function stopMetronome() {
+                isPlaying = false;
+                document.getElementById('play-button').innerHTML = '<i class="fas fa-play"></i>';
+                document.getElementById('play-button').classList.remove('bg-yellow-600', 'hover:bg-yellow-500');
+                document.getElementById('play-button').classList.add('bg-green-600', 'hover:bg-green-500');
+                currentBeat = 0;
+                updateVisualIndicators(-1); // Reset all indicators
+            }
+            
+            // Update visual indicators
+            function updateVisualIndicators(beatIndex) {
+                // Reset all beat indicators
+                document.querySelectorAll('.beat-indicator').forEach((indicator, index) => {
+                    indicator.classList.remove('active-beat', 'bg-sky-500');
+                    indicator.classList.add('bg-slate-600');
+                    
+                    if (index === beatIndex) {
+                        indicator.classList.add('active-beat', 'bg-sky-500');
+                        indicator.classList.remove('bg-slate-600');
+                    }
+                });
+            }
+            
+            // Update the visual indicators UI based on current settings
+            function updateVisualIndicatorsUI() {
+                // Update beat indicators
+                const beatIndicators = document.getElementById('beat-indicators');
+                beatIndicators.innerHTML = '';
+                
+                for (let i = 0; i < timeSignatureTop; i++) {
+                    const indicator = document.createElement('div');
+                    indicator.id = `beat-indicator-${i}`;
+                    indicator.className = 'beat-indicator bg-slate-600 w-10 h-10 rounded-full flex items-center justify-center font-medium';
+                    indicator.textContent = i + 1;
+                    beatIndicators.appendChild(indicator);
+                }
+            }
+            
+            // Event listeners for UI controls
+            
+            // Tempo controls
+            document.getElementById('tempo-up').addEventListener('click', function() {
+                tempo = Math.min(tempo + 1, 240);
+                document.getElementById('tempo-value').textContent = tempo;
+                document.getElementById('tempo-slider').value = tempo;
+                if (isPlaying) updateMetronome();
+            });
+            
+            document.getElementById('tempo-down').addEventListener('click', function() {
+                tempo = Math.max(tempo - 1, 40);
+                document.getElementById('tempo-value').textContent = tempo;
+                document.getElementById('tempo-slider').value = tempo;
+                if (isPlaying) updateMetronome();
+            });
+            
+            document.getElementById('tempo-slider').addEventListener('input', function() {
+                tempo = parseInt(this.value);
+                document.getElementById('tempo-value').textContent = tempo;
+                if (isPlaying) updateMetronome();
+            });
+            
+            // Time signature controls
+            document.getElementById('time-signature-top').addEventListener('change', function() {
+                timeSignatureTop = parseInt(this.value);
+                updateVisualIndicatorsUI();
+                if (isPlaying) updateMetronome();
+            });
+            
+            document.getElementById('time-signature-bottom').addEventListener('change', function() {
+                timeSignatureBottom = parseInt(this.value);
+                if (isPlaying) updateMetronome();
+            });
+            
+            // Transport controls
+            document.getElementById('play-button').addEventListener('click', function() {
+                if (isPlaying) {
+                    stopMetronome();
+                } else {
+                    startMetronome();
+                }
+            });
+            
+            document.getElementById('stop-button').addEventListener('click', function() {
+                stopMetronome();
+            });
+            
+            // Volume control
+            document.getElementById('volume-slider').addEventListener('input', function() {
+                volume = parseInt(this.value) / 100;
+            });
+            
+            // Initialize the metronome
+            updateVisualIndicatorsUI();
+            
+            // Handle tab visibility changes to prevent audio issues
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    if (isPlaying) {
+                        stopMetronome();
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
